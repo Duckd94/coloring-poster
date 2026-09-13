@@ -32,9 +32,16 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
 
 # vercel
 .vercel
+
+# output ảnh test cục bộ (mục 12 bước 3)
+/test-output/
+
+# Claude Code — settings cá nhân, không phải config chung của project
+.claude/settings.local.json
 
 # typescript
 *.tsbuildinfo
