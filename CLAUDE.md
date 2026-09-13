@@ -109,3 +109,36 @@ npm run lint
   resize `sharp` → output đúng 3543×4724px (khổ 30x40, 300 DPI). Build + lint pass.
 - Bước tiếp theo theo mục 12: bước 4 (ghép flow generate + upscale thành API thật, có
   moderation/watermark/rate-limit/lưu DB) hoặc áp dụng migration DB nếu làm bước đó trước.
+
+## Trạng thái hiện tại (Bước 4 — API generate thật + UI)
+
+- Migration đã áp dụng lên DB cloud (`fqbdeylwvycmrkisnhia`) qua `npx supabase db push`. Bảng
+  `generations`/`orders` đã tồn tại.
+- 2 Storage bucket đã tạo trên Supabase: `generation-sources` (private, ảnh gốc khách upload) và
+  `generation-previews` (public, ảnh preview có watermark) — quản lý qua
+  `src/lib/supabase/storage.ts`.
+- `src/lib/openai/moderation.ts` — `moderateImage()` dùng model `omni-moderation-latest`
+  (`moderations.create` với `image_url` data URL), ném `ContentModerationError` kèm tên category
+  bị flag. Gọi trước khi upload/generate để không tốn credit AI cho ảnh vi phạm.
+- `src/lib/watermark.ts` — `applyWatermark()` phủ pattern text "PREVIEW – coloringposter.com"
+  lặp lại, xoay -30°, bán trong suốt, dùng SVG + `sharp` composite. Áp dụng lên ảnh line art
+  trước khi lưu vào bucket public.
+- `POST /api/generate` — route thật thay thế `/api/generate-preview`: validate ảnh/email/khổ
+  giấy → `moderateImage` → tạo `generationId` (UUID) → upload ảnh gốc vào bucket private →
+  `generateColoringPage()` (pipeline 2 bước) → `applyWatermark()` → upload preview vào bucket
+  public → insert row `generations` (status "completed") → trả về `{ generationId,
+  previewImageUrl }`. CHƯA gọi module upscale ở route này — upscale full-res chỉ chạy sau khi
+  thanh toán (đúng mục 3, tránh lộ ảnh full-res chưa trả tiền).
+- `src/app/page.tsx` — thay UI mặc định bằng trang khách hàng thật: upload ảnh, nhập email,
+  chọn khổ giấy, gọi `/api/generate`, hiển thị preview có watermark trả về.
+- Chưa enforce rate-limit/CAPTCHA (mục 4) — email/IP đã lưu vào `generations` để dùng ở bước 9.
+- Build (`npm run build`) và lint (`npm run lint`) đã pass — chỉ còn warning `next/image` không
+  chặn build, chấp nhận được cho ảnh preview/blob URL động.
+- Đã test end-to-end route `/api/generate` bằng API key thật: ảnh mẫu → HTTP 200 sau ~3m39s →
+  `generationId` + `previewImageUrl` trả về, ảnh preview có watermark tải được công khai từ
+  Supabase Storage, chất lượng line art tốt.
+- Đã xoá các route/trang chỉ để test nội bộ (không còn cần sau khi có route thật):
+  `/api/generate-preview`, `/api/full-pipeline-test`, `/api/upscale-test`, `/test`. Build lại
+  xác nhận chỉ còn `/`, `/_not-found`, `/api/generate`.
+- Bước tiếp theo theo mục 12: bước 5 trở đi (Gelato Prices API động theo quốc gia, mockup, stub
+  checkout, fulfill module, webhook).
